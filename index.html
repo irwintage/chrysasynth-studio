@@ -1840,34 +1840,45 @@ bassSynth = new Tone.MonoSynth({
 
 bassSynth.chain(bassDrive, bassFilter, bassVerb);
 
-  melBus = new Tone.Gain(state.volumes.melody).connect(masterBus);
+melBus = new Tone.Gain(state.volumes.melody).connect(masterBus);
 
-  kickSynth = new Tone.MembraneSynth({
-    pitchDecay:0.045,
-    octaves:4,
-    oscillator:{type:"sine"},
-    envelope:{attack:0.001, decay:0.28, sustain:0, release:0.12}
-  }).connect(drumBus);
+kickSynth = new Tone.MembraneSynth({
+  pitchDecay: 0.035,
+  octaves: 5,
+  oscillator: { type: "sine" },
+  envelope: { attack: 0.001, decay: 0.28, sustain: 0, release: 0.08 }
+}).connect(drumBus);
 
-  const snareFilter = new Tone.Filter({type:"bandpass", frequency:2100, Q:1.1}).connect(drumBus);
-  snareSynth = new Tone.NoiseSynth({
-    noise:{type:"white"},
-    envelope:{attack:0.001, decay:0.11, sustain:0}
-  }).connect(snareFilter);
+const snareFilter = new Tone.Filter({
+  type: "bandpass",
+  frequency: 1850,
+  Q: 1.35
+}).connect(drumBus);
 
-  const hatFilter = new Tone.Filter({type:"highpass", frequency:7200, Q:0.8}).connect(drumBus);
-  hatSynth = new Tone.NoiseSynth({
-    noise:{type:"white"},
-    envelope:{attack:0.001, decay:0.05, sustain:0},
-    volume:-8
-  }).connect(hatFilter);
+snareSynth = new Tone.NoiseSynth({
+  noise: { type: "white" },
+  envelope: { attack: 0.001, decay: 0.085, sustain: 0 },
+  volume: -1
+}).connect(snareFilter);
 
-  const clapFilter = new Tone.Filter({type:"bandpass", frequency:1700, Q:0.8}).connect(drumBus);
-  clapSynth = new Tone.NoiseSynth({
-    noise:{type:"pink"},
-    envelope:{attack:0.002, decay:0.12, sustain:0},
-    volume:-3
-  }).connect(clapFilter);
+const hatFilter = new Tone.Filter({type:"highpass", frequency:7200, Q:0.8}).connect(drumBus);
+hatSynth = new Tone.NoiseSynth({
+  noise:{type:"white"},
+  envelope:{attack:0.001, decay:0.05, sustain:0},
+  volume:-8
+}).connect(hatFilter);
+
+const clapFilter = new Tone.Filter({
+  type: "highpass",
+  frequency: 2500,
+  Q: 0.7
+}).connect(drumBus);
+
+clapSynth = new Tone.NoiseSynth({
+  noise: { type: "pink" },
+  envelope: { attack: 0.002, decay: 0.15, sustain: 0 },
+  volume: -7
+}).connect(clapFilter);
 
   melVoiceSoft = new Tone.PolySynth(Tone.Synth,{
     oscillator:{type:"sine"},
@@ -2155,7 +2166,50 @@ function setModuleEnabled(key, enabled){
 function toggleModule(key){
   setModuleEnabled(key, !state.moduleEnabled[key]);
 }
+function applyBassOscCharacter(){
+  if(!bassSynth) return;
 
+  if(state.bass.osc === "sine"){
+    bassSynth.oscillator.type = "sine";
+    bassSynth.oscillator.partials = [];
+    return;
+  }
+
+  if(state.bass.osc === "triangle"){
+    bassSynth.oscillator.type = "triangle";
+    bassSynth.oscillator.partials = [];
+    return;
+  }
+
+  if(state.bass.osc === "sawtooth"){
+    bassSynth.oscillator.type = "custom";
+    bassSynth.oscillator.partials = [
+      1.0,   // fondamentale
+      0.55,
+      0.28,
+      0.16,
+      0.09,
+      0.05,
+      0.025
+    ];
+    return;
+  }
+
+  if(state.bass.osc === "square"){
+    bassSynth.oscillator.type = "custom";
+    bassSynth.oscillator.partials = [
+      1.0,   // fondamentale
+      0.0,
+      0.42,
+      0.0,
+      0.18,
+      0.0,
+      0.08,
+      0.0,
+      0.03
+    ];
+  }
+}
 // ---------- AUDIO STATE ----------
 function applyAudioState(){
   if(!audioReady) return;
@@ -2181,7 +2235,7 @@ function applyAudioState(){
   0.04
 );
   bassVerb.wet.rampTo(state.bass.reverb * 0.8, 0.05);
-  bassSynth.oscillator.type = state.bass.osc;
+  applyBassOscCharacter();
   bassSynth.portamento = 0.01 + state.bass.glide * 0.16;
 }
 // ---------- RANDOM ----------
@@ -2383,13 +2437,17 @@ function randomAll(){
 // ---------- TRIGGERS ----------
 function triggerDrum(stepIndex, time){
   if(!state.moduleEnabled.drum) return;
+
   const kickOn = state.drum.kick[stepIndex];
   const snareOn = state.drum.snare[stepIndex];
   const hatOn = state.drum.hat[stepIndex];
   const clapOn = state.drum.clap[stepIndex];
 
   if(kickOn){
-    kickSynth.triggerAttackRelease("C1","8n",time,0.90);
+    const isAccent = stepIndex % 4 === 0 || Math.random() < 0.15;
+    const vel = isAccent ? 1.0 : 0.78;
+
+    kickSynth.triggerAttackRelease("C1", "8n", time, vel);
 
     if(audioReady && state.moduleEnabled.bass){
       const pump = state.bass.pump;
@@ -2398,6 +2456,7 @@ function triggerDrum(stepIndex, time){
       bassMixBus.gain.linearRampToValueAtTime(Math.max(0.0, state.volumes.bass - pump * 0.75), time + 0.01);
       bassMixBus.gain.linearRampToValueAtTime(state.moduleEnabled.bass ? state.volumes.bass : 0, time + 0.12 + pump * 0.18);
     }
+
     if(audioReady && state.moduleEnabled.melody){
       melBus.gain.cancelScheduledValues(time);
       melBus.gain.setValueAtTime(state.moduleEnabled.melody ? state.volumes.melody : 0, time);
@@ -2406,16 +2465,24 @@ function triggerDrum(stepIndex, time){
     }
   }
 
-  if(snareOn) snareSynth.triggerAttackRelease("16n", time, 0.56);
+  if(snareOn){
+    snareSynth.triggerAttackRelease("16n", time, 0.56);
+  }
 
   if(hatOn){
     hatSynth.triggerAttackRelease("32n", time, 0.24);
     if(state.swing > 0.08 && audioReady && Math.random() < 0.35){
-      hatSynth.triggerAttackRelease("64n", time + Tone.Time("32n").toSeconds() * (0.2 + state.swing), 0.12);
+      hatSynth.triggerAttackRelease(
+        "64n",
+        time + Tone.Time("32n").toSeconds() * (0.2 + state.swing),
+        0.12
+      );
     }
   }
 
-  if(clapOn) clapSynth.triggerAttackRelease("16n", time, 0.40);
+  if(clapOn){
+    clapSynth.triggerAttackRelease("16n", time, 0.24);
+  }
 }
 function triggerBass(stepIndex, time){
   if(!state.moduleEnabled.bass){
