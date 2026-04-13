@@ -2168,14 +2168,22 @@ function applyAudioState(){
   bassMixBus.gain.rampTo(state.moduleEnabled.bass ? state.volumes.bass : 0, 0.05);
   melBus.gain.rampTo(state.moduleEnabled.melody ? state.volumes.melody : 0, 0.05);
 
-  bassDrive.distortion = 0.18 + state.bass.drive * 0.55;
-bassFilter.frequency.rampTo(180 + state.bass.cutoff * 2400, 0.04);
-bassFilter.Q.rampTo(6 + state.bass.cutoff * 12, 0.04);
-bassVerb.wet.rampTo(state.bass.reverb * 0.8, 0.05);
-bassSynth.oscillator.type = state.bass.osc;
-bassSynth.portamento = 0.01 + state.bass.glide * 0.16;
-}
+  bassDrive.distortion =
+    state.bass.osc === "sawtooth" ? 0.05 + state.bass.drive * 0.22 :
+    state.bass.osc === "square"   ? 0.04 + state.bass.drive * 0.20 :
+                                    0.08 + state.bass.drive * 0.28;
 
+  bassFilter.frequency.rampTo(180 + state.bass.cutoff * 2400, 0.04);
+  bassFilter.Q.rampTo(
+  state.bass.osc === "sawtooth" ? 3.2 + state.bass.cutoff * 6 :
+  state.bass.osc === "square"   ? 3.5 + state.bass.cutoff * 6.5 :
+                                  5 + state.bass.cutoff * 9,
+  0.04
+);
+  bassVerb.wet.rampTo(state.bass.reverb * 0.8, 0.05);
+  bassSynth.oscillator.type = state.bass.osc;
+  bassSynth.portamento = 0.01 + state.bass.glide * 0.16;
+}
 // ---------- RANDOM ----------
 function buildBassPattern(style){
   const templates = {
@@ -2414,13 +2422,54 @@ function triggerBass(stepIndex, time){
     $("bassNoteText").textContent = "Note —";
     return;
   }
+
   const midi = bassMidiForStep(stepIndex);
   if(midi === null){
     $("bassNoteText").textContent = "Note —";
     return;
   }
-  bassSynth.triggerAttackRelease(midiToFreq(midi), "8n", time, 0.68);
-  $("bassNoteText").textContent = `Note ${NOTE_NAMES[midi % 12]}`;
+
+  const prevMidi = bassMidiForStep((stepIndex - 1 + 16) % 16);
+
+  const hasConsecutiveNotes =
+    prevMidi !== null &&
+    midi !== null;
+
+  const interval = hasConsecutiveNotes ? Math.abs(midi - prevMidi) : 0;
+
+  const shouldSlide =
+    hasConsecutiveNotes &&
+    (
+      interval <= 2 ||
+      stepIndex % 4 === 3 ||
+      Math.random() < 0.30
+    );
+
+  const isAccent =
+    stepIndex % 4 === 2 || Math.random() < 0.18;
+
+  const velocity = isAccent ? 0.95 : 0.65;
+
+  bassSynth.portamento = shouldSlide
+    ? 0.14 + state.bass.glide * 0.35
+    : 0.008 + state.bass.glide * 0.05;
+
+  if(isAccent){
+    bassFilter.frequency.cancelScheduledValues(time);
+    bassFilter.frequency.setValueAtTime(200 + state.bass.cutoff * 2000, time);
+    bassFilter.frequency.linearRampToValueAtTime(2400 + state.bass.cutoff * 2000, time + 0.02);
+    bassFilter.frequency.exponentialRampToValueAtTime(300 + state.bass.cutoff * 800, time + 0.18);
+  }
+
+  bassSynth.triggerAttackRelease(
+    midiToFreq(midi),
+    isAccent ? "16n" : "8n",
+    time,
+    velocity
+  );
+
+  $("bassNoteText").textContent =
+    `Note ${NOTE_NAMES[midi % 12]}${shouldSlide ? " ~" : ""}${isAccent ? " !" : ""}`;
 }
 function triggerMelody(stepIndex, time){
   if(!state.moduleEnabled.melody) return;
