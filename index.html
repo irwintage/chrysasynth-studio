@@ -1801,17 +1801,44 @@ async function initAudio(){
 
   // Important: whole bass chain goes through ONE mix bus
   bassMixBus = new Tone.Gain(state.volumes.bass).connect(masterBus);
-  bassVerb = new Tone.Reverb({decay:1.8, wet:state.bass.reverb}).connect(bassMixBus);
-  bassDrive = new Tone.Distortion(state.bass.drive);
-  bassFilter = new Tone.Filter({type:"lowpass", frequency:200 + state.bass.cutoff*5000, rolloff:-24});
-  bassSynth = new Tone.MonoSynth({
-    oscillator:{type:state.bass.osc},
-    envelope:{attack:0.01, decay:0.22, sustain:0.0, release:0.12},
-    filter:{type:"lowpass", frequency:1200, rolloff:-24},
-    filterEnvelope:{attack:0.01, decay:0.14, sustain:0, release:0.04, baseFrequency:180, octaves:3.5},
-    portamento:state.bass.glide
-  });
-  bassSynth.chain(bassDrive, bassFilter, bassVerb);
+  bassVerb = new Tone.Reverb({decay:1.2, wet:state.bass.reverb}).connect(bassMixBus);
+
+bassDrive = new Tone.Distortion(0.22 + state.bass.drive * 0.35);
+
+bassFilter = new Tone.Filter({
+  type:"lowpass",
+  frequency:260 + state.bass.cutoff * 2200,
+  Q:12,
+  rolloff:-24
+});
+
+bassSynth = new Tone.MonoSynth({
+  oscillator:{type:state.bass.osc},
+  envelope:{
+    attack:0.001,
+    decay:0.14,
+    sustain:0.0,
+    release:0.08
+  },
+  filter:{
+    type:"lowpass",
+    frequency:900,
+    Q:8,
+    rolloff:-24
+  },
+  filterEnvelope:{
+    attack:0.001,
+    decay:0.16,
+    sustain:0,
+    release:0.05,
+    baseFrequency:220,
+    octaves:4.6,
+    exponent:2
+  },
+  portamento:state.bass.glide
+});
+
+bassSynth.chain(bassDrive, bassFilter, bassVerb);
 
   melBus = new Tone.Gain(state.volumes.melody).connect(masterBus);
 
@@ -1895,16 +1922,23 @@ function editedBassPattern(){
 }
 
 // ---------- DRUM UI ----------
+const drumRefs = {
+  kick: [],
+  snare: [],
+  hat: [],
+  clap: []
+};
 function buildDrumRow(containerId, rowName){
   const container = $(containerId);
   container.innerHTML = "";
   state.drum[rowName].forEach((v, i)=>{
     const el = document.createElement("div");
     el.className = "step" + (v ? ` on ${rowName}` : "");
-    el.onclick = () => {
-      state.drum[rowName][i] = state.drum[rowName][i] ? 0 : 1;
-      renderDrum(step);
-    };
+    el.onpointerdown = (e) => {
+  e.preventDefault();
+  state.drum[rowName][i] = state.drum[rowName][i] ? 0 : 1;
+  renderDrum(step);
+};
     container.appendChild(el);
   });
 }
@@ -2005,15 +2039,16 @@ function buildMelodyNoteChips(){
     const chip = document.createElement("div");
     chip.className = "note-chip" + (state.melody.allowedIndices.includes(i) ? " active" : "");
     chip.textContent = label;
-    chip.onclick = () => {
-      const set = new Set(state.melody.allowedIndices);
-      if(set.has(i)) set.delete(i);
-      else set.add(i);
-      if(set.size === 0) set.add(i);
-      state.melody.allowedIndices = [...set].sort((a,b)=>a-b);
-      generateMelodyPattern();
-      renderMelody(step);
-    };
+   chip.onpointerdown = (e) => {
+  e.preventDefault();
+  const set = new Set(state.melody.allowedIndices);
+  if(set.has(i)) set.delete(i);
+  else set.add(i);
+  if(set.size === 0) set.add(i);
+  state.melody.allowedIndices = [...set].sort((a,b)=>a-b);
+  generateMelodyPattern();
+  renderMelody(step);
+};
     wrap.appendChild(chip);
   });
 }
@@ -2133,11 +2168,12 @@ function applyAudioState(){
   bassMixBus.gain.rampTo(state.moduleEnabled.bass ? state.volumes.bass : 0, 0.05);
   melBus.gain.rampTo(state.moduleEnabled.melody ? state.volumes.melody : 0, 0.05);
 
-  bassDrive.distortion = state.bass.drive;
-  bassFilter.frequency.rampTo(200 + state.bass.cutoff * 5000, 0.05);
-  bassVerb.wet.rampTo(state.bass.reverb, 0.05);
-  bassSynth.oscillator.type = state.bass.osc;
-  bassSynth.portamento = state.bass.glide;
+  bassDrive.distortion = 0.18 + state.bass.drive * 0.55;
+bassFilter.frequency.rampTo(180 + state.bass.cutoff * 2400, 0.04);
+bassFilter.Q.rampTo(6 + state.bass.cutoff * 12, 0.04);
+bassVerb.wet.rampTo(state.bass.reverb * 0.8, 0.05);
+bassSynth.oscillator.type = state.bass.osc;
+bassSynth.portamento = 0.01 + state.bass.glide * 0.16;
 }
 
 // ---------- RANDOM ----------
@@ -2270,13 +2306,20 @@ function randomizeMelodyWithStyle(dir){
 
 function applyAutoMix(dir){
   state.volumes.drum = 0.86;
-  state.volumes.bass = 0.78;
+  state.volumes.bass = 0.82;
   state.volumes.melody = randRange(dir.mix.melody);
-  state.bass.drive = clamp(state.bass.drive, 0.08, 0.34);
-  state.bass.reverb = clamp(state.bass.reverb, 0.04, 0.22);
-  state.bass.cutoff = clamp(state.bass.cutoff, 0.22, 0.70);
-  state.bass.pump = clamp(state.bass.pump, 0.30, 0.58);
-  state.melody.density = clamp(state.melody.density, 0.18, 0.56);
+
+  // 🔥 Bass tone shaping (acid oriented)
+  state.bass.drive = clamp(state.bass.drive, 0.16, 0.38);
+  state.bass.reverb = clamp(state.bass.reverb, 0.02, 0.10);
+  state.bass.cutoff = clamp(state.bass.cutoff, 0.18, 0.48);
+  state.bass.pump = clamp(state.bass.pump, 0.34, 0.60);
+
+  // glide un peu plus présent
+  state.bass.glide = clamp(state.bass.glide, 0.04, 0.12);
+
+  // melody un peu plus contenue
+  state.melody.density = clamp(state.melody.density, 0.18, 0.50);
 }
 
 function randomizeDrum(){
